@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+""" Module of Users views """
+from api.v1.views import app_views
+from api.v1.auth.session_auth import SessionAuth
+from flask import abort, jsonify, request, make_response
+from models.user import User
+from os import getenv
+
+
+@app_views.route('/auth_session/login', methods=['POST'],
+                 strict_slashes=False)
+def login():
+    """
+    Handles all routes for session auth login
+
+    Retrieve post data from request, validate, and create new session
+    Returns json response with dict representation of user
+    Sets cookie to response with value of session id
+    """
+    # Retrieve post data with request.form.get
+    email = request.form.get('email')
+    if email is None:
+        return (jsonify({"error": "email missing"}), 400)
+    pw = request.form.get('password')
+    if pw is None:
+        return (jsonify({"error": "password missing"}), 400)
+    search = User.search({'email': email})
+    if len(search) == 0:
+        return (jsonify({"error": "no user found for this email"}), 404)
+    for user in search:
+        if not user.is_valid_password(pw):
+            return (jsonify({"error": "wrong password"}), 401)
+        else:
+            from api.v1.app import auth
+            session_id = auth.create_session(user.id)
+            # Create a response object by jsonifying the user object
+            response = jsonify(user.to_json())
+            # Set cookie to session id
+            response.set_cookie(getenv('SESSION_NAME'), session_id)
+            return (response)
+
+
+@app_views.route('/auth_session/logout', methods=['DELETE'],
+                 strict_slashes=False)
+def logout():
+    """
+    Deletes session id from cookie based on request
+    """
+    from api.v1.app import auth
+    # If function returns true, return 200 status code - OK
+    if (auth.destroy_session(request)):
+        return (jsonify({}), 200)
+    abort(404)
